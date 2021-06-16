@@ -21,6 +21,8 @@ fn main() {
         Windows::Win32::Foundation::{
             PSTR,
             PWSTR
-        }
+        },
+        Windows::Win32::UI::KeyboardAndMouseInput::GetAsyncKeyState,
+        Windows::System::VirtualKey
     );
 }

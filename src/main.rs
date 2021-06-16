@@ -8,29 +8,33 @@ mod bindings {
     windows::include_bindings!();
 }
 
-use bindings::Windows::Win32::{
-    Media::Multimedia::{
-        waveOutGetNumDevs,
-        WAVEOUTCAPSW,
-        waveOutGetDevCapsW,
-        MMSYSERR_NOERROR,
-        WAVEFORMATEX,
-        WAVE_FORMAT_PCM,
-        waveOutOpen,
-        HWAVEOUT,
-        CALLBACK_FUNCTION,
-        WAVEHDR,
-        WHDR_PREPARED,
-        waveOutUnprepareHeader,
-        waveOutGetErrorTextW,
-        waveOutPrepareHeader,
-        waveOutWrite,
-        MM_WOM_DONE
+use bindings::Windows::{
+    Win32::{
+        Media::Multimedia::{
+            waveOutGetNumDevs,
+            WAVEOUTCAPSW,
+            waveOutGetDevCapsW,
+            MMSYSERR_NOERROR,
+            WAVEFORMATEX,
+            WAVE_FORMAT_PCM,
+            waveOutOpen,
+            HWAVEOUT,
+            CALLBACK_FUNCTION,
+            WAVEHDR,
+            WHDR_PREPARED,
+            waveOutUnprepareHeader,
+            waveOutGetErrorTextW,
+            waveOutPrepareHeader,
+            waveOutWrite,
+            MM_WOM_DONE
+        },
+        Foundation::{
+            PSTR,
+            PWSTR
+        },
+        UI::KeyboardAndMouseInput::GetAsyncKeyState
     },
-    Foundation::{
-        PSTR,
-        PWSTR
-    }
+    System::VirtualKey
 };
 
 unsafe impl Send for WAVEHDR {}
@@ -51,18 +55,21 @@ extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usi
 
 static BLOCK_FREE: AtomicU32 = AtomicU32::new(8);
 
-fn main() -> windows::Result<()> {
+fn enumerate() -> Vec<(usize, String)> {
     let device_count = unsafe { waveOutGetNumDevs() };
-    let mut devices: Vec<String> = Vec::new();
+    let mut devices: Vec<(usize, String)> = Vec::new();
     let mut woc = unsafe { MaybeUninit::<WAVEOUTCAPSW>::zeroed().assume_init() };
     for i in 0..device_count as usize {
         if unsafe { waveOutGetDevCapsW(i, &mut woc, size_of::<WAVEOUTCAPSW>() as u32) } == MMSYSERR_NOERROR {
-            devices.push(String::from_utf16(unsafe { &woc.szPname }).unwrap());
+            devices.push((i, String::from_utf16(unsafe { &woc.szPname }).unwrap()));
         }
     }
+    devices
+}
 
-    for d in devices.iter() {
-        println!("Found Output Device:{}", d);
+fn main() -> windows::Result<()> {
+    for (id, name) in enumerate().iter() {
+        println!("Found Output Device: {} - {}", id, name);
     }
 
     let mut wave_format = WAVEFORMATEX {
@@ -103,14 +110,13 @@ fn main() -> windows::Result<()> {
 
     {
         let block_not_zero = block_not_zero.clone();
-        let thread = thread::spawn(move|| {
+        let _ = thread::spawn(move|| {
             let mut global_time = global_time_mutex.lock().unwrap();
             *global_time = 0f64;
             let time_step = 1f64 / 44100f64;
 
             let max_sample = 2u16.pow((2 * 8) - 1) - 1;
             let double_max_sample = max_sample as f64;
-            let mut previous_sample = 0u16;
 
             while ready.load(Ordering::SeqCst) {
                 // wait for block to become available
@@ -127,15 +133,13 @@ fn main() -> windows::Result<()> {
                     unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
                 }
 
-                let mut new_sample = 0u16;
                 let current_block = block_current * 512;
 
                 for i in 0..512usize {
                     let user_function_res = 0.5f64 * (440f64 * 2f64 * PI * *global_time).sin();
-                    new_sample = (if user_function_res >= 0f64 { f64::min(user_function_res, 1f64) } else { f64::max(user_function_res, -1f64)} * double_max_sample) as u16;
+                    let new_sample = (if user_function_res >= 0f64 { f64::min(user_function_res, 1f64) } else { f64::max(user_function_res, -1f64)} * double_max_sample) as u16;
 
                     block_memory[current_block + i] = new_sample;
-                    previous_sample = new_sample;
                     *global_time += time_step;
                 }
 
@@ -152,7 +156,9 @@ fn main() -> windows::Result<()> {
     let _ = block_not_zero.1.notify_one();
 
     loop {
-
+        if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
+            break;
+        }
     }
 
     Ok(())
