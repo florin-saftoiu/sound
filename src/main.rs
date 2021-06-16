@@ -67,11 +67,7 @@ fn enumerate() -> Vec<(usize, String)> {
     devices
 }
 
-fn main() -> windows::Result<()> {
-    for (id, name) in enumerate().iter() {
-        println!("Found Output Device: {} - {}", id, name);
-    }
-
+fn new_noise_maker() {
     let mut wave_format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as u16,
         nSamplesPerSec: 44100,
@@ -154,6 +150,14 @@ fn main() -> windows::Result<()> {
     
     let _ = block_not_zero.0.lock().unwrap();
     let _ = block_not_zero.1.notify_one();
+}
+
+fn main() -> windows::Result<()> {
+    for (id, name) in enumerate().iter() {
+        println!("Found Output Device: {} - {}", id, name);
+    }
+
+    new_noise_maker();
 
     loop {
         if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
