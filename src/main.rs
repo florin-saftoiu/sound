@@ -70,7 +70,7 @@ fn clip(sample: f64, max: f64) -> f64 {
     }
 }
 
-fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32) {
+fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: fn(f64) -> f64) {
     let mut wave_format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as u16,
         nSamplesPerSec: sample_rate,
@@ -134,8 +134,7 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
                 let current_block = block_current * block_samples as usize;
 
                 for i in 0..block_samples as usize {
-                    let user_function_res = 0.5f64 * (440f64 * 2f64 * PI * *global_time).sin();
-                    let new_sample = (clip(user_function_res, 1f64) * max_sample) as u16;
+                    let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as u16;
 
                     block_memory[current_block + i] = new_sample;
                     *global_time += time_step;
@@ -159,7 +158,12 @@ fn main() -> windows::Result<()> {
         println!("Found Output Device: {} - {}", id, name);
     }
 
-    new_noise_maker(0, 44100, 1, 8, 512);
+    fn make_noise(time: f64) -> f64 {
+        let output = (440f64 * 2f64 * PI * time).sin();
+        output * 0.5f64
+    }
+
+    noise_maker(0, 44100, 1, 8, 512, make_noise);
 
     loop {
         if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
