@@ -39,7 +39,7 @@ use bindings::Windows::{
 
 unsafe impl Send for WAVEHDR {}
 
-extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usize, _param1: u32, _param2: u32) {
+extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usize, _dw_param1: usize, _dw_param2: usize) {
     if msg != MM_WOM_DONE {
         return
     }
@@ -47,7 +47,7 @@ extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usi
     BLOCK_FREE.fetch_add(1, Ordering::SeqCst);
 
     unsafe {
-        let block_not_zero = Arc::from_raw(dw_instance as *const (Mutex<()>, Condvar));
+        let block_not_zero = Arc::from_raw(dw_instance as *mut (Mutex<()>, Condvar));
         let _ = block_not_zero.0.lock().unwrap();
         let _ = block_not_zero.1.notify_one();
     };
@@ -67,14 +67,14 @@ fn enumerate() -> Vec<(usize, String)> {
     devices
 }
 
-fn new_noise_maker() {
+fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32) {
     let mut wave_format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as u16,
-        nSamplesPerSec: 44100,
+        nSamplesPerSec: sample_rate,
         wBitsPerSample: 2 * 8,
-        nChannels: 1,
-        nBlockAlign: ((2 * 8) / 8) * 1,
-        nAvgBytesPerSec: 44100 * 2,
+        nChannels: channels,
+        nBlockAlign: ((2 * 8) / 8) * channels,
+        nAvgBytesPerSec: sample_rate * ((2 * 8) / 8) * channels as u32,
         cbSize: 0
     };
 
@@ -82,21 +82,21 @@ fn new_noise_maker() {
 
     let block_not_zero = Arc::new((Mutex::new(()), Condvar::new()));
 
-    let mmsyserr = unsafe { waveOutOpen(&mut hw_device, 0, &mut wave_format, wave_out_proc as usize, Arc::into_raw(block_not_zero.clone()) as usize, CALLBACK_FUNCTION) };
+    let mmsyserr = unsafe { waveOutOpen(&mut hw_device, device_id as u32, &mut wave_format, wave_out_proc as usize, Arc::into_raw(block_not_zero.clone()) as usize, CALLBACK_FUNCTION) };
     if mmsyserr != MMSYSERR_NOERROR {
         let mut text: [u16; 512] = [0; 512];
         unsafe { waveOutGetErrorTextW(mmsyserr, PWSTR(text.as_mut_ptr()), text.len() as u32) };
         let end = text.iter().position(|&x| x == 0).unwrap();
         let text = String::from_utf16(&text[..end]).unwrap();
-        panic!("CRAP !\n{}", text);
+        panic!("Error calling waveOutOpen {}", text);
     }
 
-    let mut block_memory = vec![0u16; 8 * 512];
-    let mut wave_headers = vec![unsafe { MaybeUninit::<WAVEHDR>::zeroed().assume_init() }; 8];
+    let mut block_memory = vec![0u16; blocks * block_samples as usize];
+    let mut wave_headers = vec![unsafe { MaybeUninit::<WAVEHDR>::zeroed().assume_init() }; blocks];
 
-    for i in 0..8 as usize {
-        wave_headers[i].dwBufferLength = 512 * 2;
-        wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * 512) } as *mut u8);
+    for i in 0..blocks as usize {
+        wave_headers[i].dwBufferLength = block_samples * 2;
+        wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
     }
 
     let ready = AtomicBool::new(true);
@@ -129,9 +129,9 @@ fn new_noise_maker() {
                     unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
                 }
 
-                let current_block = block_current * 512;
+                let current_block = block_current * block_samples as usize;
 
-                for i in 0..512usize {
+                for i in 0..block_samples as usize {
                     let user_function_res = 0.5f64 * (440f64 * 2f64 * PI * *global_time).sin();
                     let new_sample = (if user_function_res >= 0f64 { f64::min(user_function_res, 1f64) } else { f64::max(user_function_res, -1f64)} * double_max_sample) as u16;
 
@@ -143,7 +143,7 @@ fn new_noise_maker() {
                 unsafe { waveOutPrepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
                 unsafe { waveOutWrite(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
                 block_current += 1;
-                block_current %= 8;
+                block_current %= blocks;
             }
         });
     }
@@ -157,7 +157,7 @@ fn main() -> windows::Result<()> {
         println!("Found Output Device: {} - {}", id, name);
     }
 
-    new_noise_maker();
+    new_noise_maker(0, 44100, 1, 8, 512);
 
     loop {
         if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
