@@ -62,6 +62,14 @@ fn enumerate() -> Vec<(usize, String)> {
     devices
 }
 
+fn clip(sample: f64, max: f64) -> f64 {
+    if sample >= 0f64 {
+        f64::min(sample, max)
+    } else {
+        f64::max(sample, -max)
+    }
+}
+
 fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32) {
     let mut wave_format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as u16,
@@ -128,7 +136,7 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
 
                 for i in 0..block_samples as usize {
                     let user_function_res = 0.5f64 * (440f64 * 2f64 * PI * *global_time).sin();
-                    let new_sample = (if user_function_res >= 0f64 { f64::min(user_function_res, 1f64) } else { f64::max(user_function_res, -1f64)} * double_max_sample) as u16;
+                    let new_sample = (clip(user_function_res, 1f64) * double_max_sample) as u16;
 
                     block_memory[current_block + i] = new_sample;
                     *global_time += time_step;
