@@ -44,16 +44,11 @@ extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usi
         return
     }
 
-    BLOCK_FREE.fetch_add(1, Ordering::SeqCst);
-
-    unsafe {
-        let block_not_zero = Arc::from_raw(dw_instance as *mut (Mutex<()>, Condvar));
-        let _ = block_not_zero.0.lock().unwrap();
-        let _ = block_not_zero.1.notify_one();
-    };
+    let block_not_zero = unsafe { Arc::from_raw(dw_instance as *mut (Mutex<usize>, Condvar)) };
+    let mut block_free = block_not_zero.0.lock().unwrap();
+    *block_free += 1;
+    block_not_zero.1.notify_one();
 }
-
-static BLOCK_FREE: AtomicU32 = AtomicU32::new(8);
 
 fn enumerate() -> Vec<(usize, String)> {
     let device_count = unsafe { waveOutGetNumDevs() };
@@ -80,7 +75,7 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
 
     let mut hw_device = unsafe { MaybeUninit::<HWAVEOUT>::zeroed().assume_init() };
 
-    let block_not_zero = Arc::new((Mutex::new(()), Condvar::new()));
+    let block_not_zero = Arc::new((Mutex::new(blocks), Condvar::new()));
 
     let mmsyserr = unsafe { waveOutOpen(&mut hw_device, device_id as u32, &mut wave_format, wave_out_proc as usize, Arc::into_raw(block_not_zero.clone()) as usize, CALLBACK_FUNCTION) };
     if mmsyserr != MMSYSERR_NOERROR {
@@ -116,13 +111,13 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
 
             while ready.load(Ordering::SeqCst) {
                 // wait for block to become available
-                if BLOCK_FREE.load(Ordering::SeqCst) == 0 {
-                    let lm = block_not_zero.0.lock().unwrap();
-                    let _ = block_not_zero.1.wait(lm).unwrap();
+                let mut block_free = block_not_zero.0.lock().unwrap();
+                while *block_free == 0  {
+                    block_free = block_not_zero.1.wait(block_free).unwrap();
                 }
 
                 // block is here, so use it
-                BLOCK_FREE.fetch_sub(1, Ordering::SeqCst);
+                *block_free -= 1;
 
                 // prepare block for processing
                 if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
@@ -148,8 +143,8 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
         });
     }
     
-    let _ = block_not_zero.0.lock().unwrap();
-    let _ = block_not_zero.1.notify_one();
+    let _block_free = block_not_zero.0.lock().unwrap();
+    block_not_zero.1.notify_one();
 }
 
 fn main() -> windows::Result<()> {
