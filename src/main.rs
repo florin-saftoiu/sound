@@ -1,6 +1,6 @@
 use std::f64::consts::PI;
 use std::mem::{size_of, MaybeUninit};
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
@@ -114,8 +114,7 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
             *global_time = 0f64;
             let time_step = 1f64 / 44100f64;
 
-            let max_sample = 2u16.pow((2 * 8) - 1) - 1;
-            let double_max_sample = max_sample as f64;
+            let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
 
             while ready.load(Ordering::SeqCst) {
                 // wait for block to become available
@@ -136,7 +135,7 @@ fn new_noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: us
 
                 for i in 0..block_samples as usize {
                     let user_function_res = 0.5f64 * (440f64 * 2f64 * PI * *global_time).sin();
-                    let new_sample = (clip(user_function_res, 1f64) * double_max_sample) as u16;
+                    let new_sample = (clip(user_function_res, 1f64) * max_sample) as u16;
 
                     block_memory[current_block + i] = new_sample;
                     *global_time += time_step;
