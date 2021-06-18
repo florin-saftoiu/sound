@@ -26,7 +26,7 @@ fn main() -> windows::Result<()> {
     println!("|_____|_____|_____|_____|_____|_____|_____|_____|_____|_____|");
     println!();
 
-    let frequency_output = Arc::new(Mutex::new(440f64));
+    let frequency_output = Arc::new(Mutex::new(0f64));
     let octave_base_frequency = 110f64;
     let twelveth_root_of_2 = 2f64.powf(1f64 / 12f64);
 
@@ -38,7 +38,7 @@ fn main() -> windows::Result<()> {
             output * 0.5f64
         };
 
-        noise_maker(0, 44100, 1, 8, 512, make_noise);
+        let _noise_maker = NoiseMaker::new(0, 44100, 1, 8, 512, make_noise);
     }
 
     let mut current_key = -1i32;
