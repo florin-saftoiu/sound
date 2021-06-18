@@ -105,13 +105,12 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
     let ready = AtomicBool::new(true);
     let mut block_current = 0usize;
 
-    let global_time_mutex = Mutex::new(0f64);
+    let global_time = Arc::new(Mutex::new(0f64));
 
     {
         let block_not_zero = block_not_zero.clone();
+        let global_time = global_time.clone();
         let _ = thread::spawn(move|| {
-            let mut global_time = global_time_mutex.lock().unwrap();
-            *global_time = 0f64;
             let time_step = 1f64 / 44100f64;
 
             let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
@@ -125,6 +124,8 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
 
                 // block is here, so use it
                 *block_free -= 1;
+                // allow wave_out_proc to increment the count
+                drop(block_free);
 
                 // prepare block for processing
                 if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
@@ -134,6 +135,7 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
                 let current_block = block_current * block_samples as usize;
 
                 for i in 0..block_samples as usize {
+                    let mut global_time = global_time.lock().unwrap();
                     let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as u16;
 
                     block_memory[current_block + i] = new_sample;
