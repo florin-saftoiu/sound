@@ -36,6 +36,7 @@ use bindings::Windows::{
 
 unsafe impl Send for WAVEHDR {}
 
+// callback for the sound driver to request more data
 extern "system" fn wave_out_proc(_wave_out: HWAVEOUT, msg: u32, dw_instance: usize, _dw_param1: usize, _dw_param2: usize) {
     if msg != MM_WOM_DONE {
         return
@@ -107,6 +108,9 @@ pub fn noise_maker<F>(device_id: usize, sample_rate: u32, channels: u16, blocks:
     {
         let block_not_zero = block_not_zero.clone();
         let global_time = global_time.clone();
+        
+        // spawn a thread to fill blocks with audio data, waiting for the sound
+        // driver to be done with them
         let _ = thread::spawn(move || {
             let time_step = 1f64 / 44100f64;
 
