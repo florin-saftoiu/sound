@@ -94,7 +94,7 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
         panic!("Error calling waveOutOpen {}", text);
     }
 
-    let mut block_memory = vec![0u16; blocks * block_samples as usize];
+    let mut block_memory = vec![0i16; blocks * block_samples as usize];
     let mut wave_headers = vec![unsafe { MaybeUninit::<WAVEHDR>::zeroed().assume_init() }; blocks];
 
     for i in 0..blocks as usize {
@@ -136,7 +136,7 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
 
                 for i in 0..block_samples as usize {
                     let mut global_time = global_time.lock().unwrap();
-                    let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as u16;
+                    let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
 
                     block_memory[current_block + i] = new_sample;
                     *global_time += time_step;
