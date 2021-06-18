@@ -70,7 +70,7 @@ fn clip(sample: f64, max: f64) -> f64 {
     }
 }
 
-fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: fn(f64) -> f64) {
+fn noise_maker<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) where F: Fn(f64) -> f64 + Send + 'static {
     let mut wave_format = WAVEFORMATEX {
         wFormatTag: WAVE_FORMAT_PCM as u16,
         nSamplesPerSec: sample_rate,
@@ -110,7 +110,7 @@ fn noise_maker(device_id: usize, sample_rate: u32, channels: u16, blocks: usize,
     {
         let block_not_zero = block_not_zero.clone();
         let global_time = global_time.clone();
-        let _ = thread::spawn(move|| {
+        let _ = thread::spawn(move || {
             let time_step = 1f64 / 44100f64;
 
             let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
@@ -160,16 +160,25 @@ fn main() -> windows::Result<()> {
         println!("Found Output Device: {} - {}", id, name);
     }
 
-    fn make_noise(time: f64) -> f64 {
-        let output = (440f64 * 2f64 * PI * time).sin();
-        output * 0.5f64
-    }
+    let frequency_output = Arc::new(Mutex::new(440f64));
 
-    noise_maker(0, 44100, 1, 8, 512, make_noise);
+    {
+        let frequency_output = frequency_output.clone();
+        let make_noise = move |time: f64| {
+            let frequency_output = frequency_output.lock().unwrap();
+            let output = (*frequency_output * 2f64 * PI * time).sin();
+            output * 0.5f64
+        };
+
+        noise_maker(0, 44100, 1, 8, 512, make_noise);
+    }
 
     loop {
         if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
             break;
+        } else if unsafe { GetAsyncKeyState(VirtualKey::A.0) } as u16 & 0x8000 != 0 {
+            let mut frequency_output = frequency_output.lock().unwrap();
+            *frequency_output = 220f64;
         }
     }
 
