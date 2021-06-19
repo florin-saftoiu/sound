@@ -70,15 +70,12 @@ fn clip(sample: f64, max: f64) -> f64 {
 
 pub struct NoiseMaker {
     ready: Arc<AtomicBool>,
-    thread_handle: Option<JoinHandle<()>>
+    thread_handle: JoinHandle<()>
 }
 
 impl NoiseMaker {
     pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> NoiseMaker where F: Fn(f64) -> f64 + Send + 'static {
-        let mut noise_maker = NoiseMaker {
-            ready: Arc::new(AtomicBool::new(false)),
-            thread_handle: None
-        };
+        let ready = Arc::new(AtomicBool::new(false));
         let mut wave_format = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_PCM as u16,
             nSamplesPerSec: sample_rate,
@@ -110,67 +107,68 @@ impl NoiseMaker {
             wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
         }
 
-        noise_maker.ready.store(true, Ordering::SeqCst);
+        ready.store(true, Ordering::SeqCst);
         let mut block_current = 0usize;
 
         let global_time = Arc::new(Mutex::new(0f64));
 
-        {
-            let block_not_zero = block_not_zero.clone();
-            let global_time = global_time.clone();
-            let ready = noise_maker.ready.clone();
-            
-            // spawn a thread to fill blocks with audio data, waiting for the sound
-            // driver to be done with them
-            noise_maker.thread_handle = Some(thread::spawn(move || {
-                let time_step = 1f64 / 44100f64;
+        let block_not_zero_clone = block_not_zero.clone();
+        let global_time_clone = global_time.clone();
+        let ready_clone = ready.clone();
+        
+        // spawn a thread to fill blocks with audio data, waiting for the sound
+        // driver to be done with them
+        let thread_handle = thread::spawn(move || {
+            let time_step = 1f64 / 44100f64;
 
-                let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
+            let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
 
-                while ready.load(Ordering::SeqCst) {
-                    // wait for block to become available
-                    let mut block_free = block_not_zero.0.lock().unwrap();
-                    while *block_free == 0  {
-                        block_free = block_not_zero.1.wait(block_free).unwrap();
-                    }
-
-                    // block is here, so use it
-                    *block_free -= 1;
-                    // allow wave_out_proc to increment the count
-                    drop(block_free);
-
-                    // prepare block for processing
-                    if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
-                        unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
-                    }
-
-                    let current_block = block_current * block_samples as usize;
-
-                    for i in 0..block_samples as usize {
-                        let mut global_time = global_time.lock().unwrap();
-                        let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
-
-                        block_memory[current_block + i] = new_sample;
-                        *global_time += time_step;
-                    }
-
-                    // send block to sound device
-                    unsafe { waveOutPrepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
-                    unsafe { waveOutWrite(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
-                    block_current += 1;
-                    block_current %= blocks;
+            while ready_clone.load(Ordering::SeqCst) {
+                // wait for block to become available
+                let mut block_free = block_not_zero_clone.0.lock().unwrap();
+                while *block_free == 0  {
+                    block_free = block_not_zero_clone.1.wait(block_free).unwrap();
                 }
-            }));
-        }
+
+                // block is here, so use it
+                *block_free -= 1;
+                // allow wave_out_proc to increment the count
+                drop(block_free);
+
+                // prepare block for processing
+                if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
+                    unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
+                }
+
+                let current_block = block_current * block_samples as usize;
+
+                for i in 0..block_samples as usize {
+                    let mut global_time = global_time_clone.lock().unwrap();
+                    let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
+
+                    block_memory[current_block + i] = new_sample;
+                    *global_time += time_step;
+                }
+
+                // send block to sound device
+                unsafe { waveOutPrepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
+                unsafe { waveOutWrite(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
+                block_current += 1;
+                block_current %= blocks;
+            }
+        });
         
         let _block_free = block_not_zero.0.lock().unwrap();
         block_not_zero.1.notify_one();
 
-        noise_maker
+        NoiseMaker {
+            ready: ready.clone(),
+            thread_handle
+        }
     }
 
-    pub fn stop(&mut self) {
+    pub fn stop(self) {
         self.ready.store(false, Ordering::SeqCst);
-        self.thread_handle.take().expect("NoiseMaker thread is not running").join().expect("Could not join NoiseMaker thread");
+        self.thread_handle.join().expect("Could not join NoiseMaker thread");
     }
 }

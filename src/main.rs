@@ -37,7 +37,7 @@ fn main() -> windows::Result<()> {
         output * 0.5f64
     };
 
-    let mut noise_maker = NoiseMaker::new(0, 44100, 1, 8, 256, make_noise);
+    let noise_maker = NoiseMaker::new(0, 44100, 1, 8, 256, make_noise);
 
     let mut current_key = -1i32;
 
