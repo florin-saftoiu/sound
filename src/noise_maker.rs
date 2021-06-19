@@ -1,7 +1,7 @@
 use std::mem::{size_of, MaybeUninit};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 mod bindings {
     windows::include_bindings!();
@@ -68,10 +68,17 @@ fn clip(sample: f64, max: f64) -> f64 {
     }
 }
 
-pub struct NoiseMaker {}
+pub struct NoiseMaker {
+    ready: Arc<AtomicBool>,
+    thread_handle: Option<JoinHandle<()>>
+}
 
 impl NoiseMaker {
     pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> NoiseMaker where F: Fn(f64) -> f64 + Send + 'static {
+        let mut noise_maker = NoiseMaker {
+            ready: Arc::new(AtomicBool::new(false)),
+            thread_handle: None
+        };
         let mut wave_format = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_PCM as u16,
             nSamplesPerSec: sample_rate,
@@ -103,7 +110,7 @@ impl NoiseMaker {
             wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
         }
 
-        let ready = AtomicBool::new(true);
+        noise_maker.ready.store(true, Ordering::SeqCst);
         let mut block_current = 0usize;
 
         let global_time = Arc::new(Mutex::new(0f64));
@@ -111,10 +118,11 @@ impl NoiseMaker {
         {
             let block_not_zero = block_not_zero.clone();
             let global_time = global_time.clone();
+            let ready = noise_maker.ready.clone();
             
             // spawn a thread to fill blocks with audio data, waiting for the sound
             // driver to be done with them
-            let _ = thread::spawn(move || {
+            noise_maker.thread_handle = Some(thread::spawn(move || {
                 let time_step = 1f64 / 44100f64;
 
                 let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
@@ -152,12 +160,17 @@ impl NoiseMaker {
                     block_current += 1;
                     block_current %= blocks;
                 }
-            });
+            }));
         }
         
         let _block_free = block_not_zero.0.lock().unwrap();
         block_not_zero.1.notify_one();
 
-        NoiseMaker {}
+        noise_maker
+    }
+
+    pub fn stop(&mut self) {
+        self.ready.store(false, Ordering::SeqCst);
+        self.thread_handle.take().expect("NoiseMaker thread is not running").join().expect("Could not join NoiseMaker thread");
     }
 }

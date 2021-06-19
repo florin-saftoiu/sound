@@ -30,16 +30,14 @@ fn main() -> windows::Result<()> {
     let octave_base_frequency = 110f64;
     let twelveth_root_of_2 = 2f64.powf(1f64 / 12f64);
 
-    {
-        let frequency_output = frequency_output.clone();
-        let make_noise = move |time: f64| {
-            let frequency_output = frequency_output.lock().unwrap();
-            let output = (*frequency_output * 2f64 * PI * time).sin();
-            output * 0.5f64
-        };
+    let frequency_output_clone = frequency_output.clone();
+    let make_noise = move |time: f64| {
+        let frequency_output = frequency_output_clone.lock().unwrap();
+        let output = (*frequency_output * 2f64 * PI * time).sin();
+        output * 0.5f64
+    };
 
-        let _noise_maker = NoiseMaker::new(0, 44100, 1, 8, 512, make_noise);
-    }
+    let mut noise_maker = NoiseMaker::new(0, 44100, 1, 8, 256, make_noise);
 
     let mut current_key = -1i32;
 
@@ -74,6 +72,8 @@ fn main() -> windows::Result<()> {
             break;
         }
     }
+
+    noise_maker.stop();
 
     Ok(())
 }
