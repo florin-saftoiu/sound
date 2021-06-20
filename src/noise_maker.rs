@@ -69,7 +69,6 @@ fn clip(sample: f64, max: f64) -> f64 {
 }
 
 pub struct NoiseMaker {
-    block_not_zero: Arc<(Mutex<usize>, Condvar)>,
     global_time: Arc<Mutex<f64>>,
     ready: Arc<AtomicBool>,
     thread_handle: JoinHandle<()>
@@ -167,7 +166,6 @@ impl NoiseMaker {
         drop(block_free);
 
         Self {
-            block_not_zero,
             global_time,
             ready,
             thread_handle
