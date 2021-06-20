@@ -111,50 +111,51 @@ impl NoiseMaker {
         let mut block_current = 0usize;
 
         let global_time = Arc::new(Mutex::new(0f64));
-
-        let block_not_zero_clone = block_not_zero.clone();
-        let global_time_clone = global_time.clone();
-        let ready_clone = ready.clone();
         
         // spawn a thread to fill blocks with audio data, waiting for the sound
         // driver to be done with them
-        let thread_handle = thread::spawn(move || {
-            let time_step = 1f64 / 44100f64;
+        let thread_handle = thread::spawn({
+            let block_not_zero = block_not_zero.clone();
+            let global_time = global_time.clone();
+            let ready = ready.clone();
+            move || {
+                let time_step = 1f64 / 44100f64;
 
-            let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
+                let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
 
-            while ready_clone.load(Ordering::SeqCst) {
-                // wait for block to become available
-                let mut block_free = block_not_zero_clone.0.lock().unwrap();
-                while *block_free == 0  {
-                    block_free = block_not_zero_clone.1.wait(block_free).unwrap();
+                while ready.load(Ordering::SeqCst) {
+                    // wait for block to become available
+                    let mut block_free = block_not_zero.0.lock().unwrap();
+                    while *block_free == 0  {
+                        block_free = block_not_zero.1.wait(block_free).unwrap();
+                    }
+
+                    // block is here, so use it
+                    *block_free -= 1;
+                    // allow wave_out_proc to increment the count
+                    drop(block_free);
+
+                    // prepare block for processing
+                    if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
+                        unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
+                    }
+
+                    let current_block = block_current * block_samples as usize;
+
+                    for i in 0..block_samples as usize {
+                        let mut global_time = global_time.lock().unwrap();
+                        let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
+
+                        block_memory[current_block + i] = new_sample;
+                        *global_time += time_step;
+                    }
+
+                    // send block to sound device
+                    unsafe { waveOutPrepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
+                    unsafe { waveOutWrite(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
+                    block_current += 1;
+                    block_current %= blocks;
                 }
-
-                // block is here, so use it
-                *block_free -= 1;
-                // allow wave_out_proc to increment the count
-                drop(block_free);
-
-                // prepare block for processing
-                if wave_headers[block_current].dwFlags & WHDR_PREPARED != 0 {
-                    unsafe { waveOutUnprepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32) };
-                }
-
-                let current_block = block_current * block_samples as usize;
-
-                for i in 0..block_samples as usize {
-                    let mut global_time = global_time_clone.lock().unwrap();
-                    let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
-
-                    block_memory[current_block + i] = new_sample;
-                    *global_time += time_step;
-                }
-
-                // send block to sound device
-                unsafe { waveOutPrepareHeader(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
-                unsafe { waveOutWrite(hw_device, &mut wave_headers[block_current], size_of::<WAVEHDR>() as u32)};
-                block_current += 1;
-                block_current %= blocks;
             }
         });
         
