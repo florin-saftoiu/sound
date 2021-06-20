@@ -26,15 +26,15 @@ fn main() -> windows::Result<()> {
     println!("|_____|_____|_____|_____|_____|_____|_____|_____|_____|_____|");
     println!();
 
-    let frequency_output = Arc::new(Mutex::new(0f64));
-    let octave_base_frequency = 110f64;
-    let twelveth_root_of_2 = 2f64.powf(1f64 / 12f64);
+    let frequency_output = Arc::new(Mutex::new(0_f64));
+    let octave_base_frequency = 110_f64;
+    let twelveth_root_of_2 = 2_f64.powf(1_f64 / 12_f64);
 
     let frequency_output_clone = frequency_output.clone();
     let make_noise = move |time: f64| {
         let frequency_output = frequency_output_clone.lock().unwrap();
-        let output = (*frequency_output * 2f64 * PI * time).sin();
-        output * 0.5f64
+        let output = (*frequency_output * 2_f64 * PI * time).sin();
+        output * 0.5_f64
     };
 
     let noise_maker = NoiseMaker::new(0, 44100, 1, 8, 256, make_noise);
@@ -65,7 +65,7 @@ fn main() -> windows::Result<()> {
             }
 
             let mut frequency_output  = frequency_output.lock().unwrap();
-            *frequency_output = 0f64;
+            *frequency_output = 0_f64;
         }
 
         if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {

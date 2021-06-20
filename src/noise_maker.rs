@@ -61,7 +61,7 @@ pub fn enumerate() -> Vec<(usize, String)> {
 }
 
 fn clip(sample: f64, max: f64) -> f64 {
-    if sample >= 0f64 {
+    if sample >= 0_f64 {
         f64::min(sample, max)
     } else {
         f64::max(sample, -max)
@@ -77,7 +77,7 @@ pub struct NoiseMaker {
 impl NoiseMaker {
     pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> Self where F: Fn(f64) -> f64 + Send + 'static {
         let block_not_zero = Arc::new((Mutex::new(blocks), Condvar::new()));
-        let global_time = Arc::new(Mutex::new(0f64));
+        let global_time = Arc::new(Mutex::new(0_f64));
         let ready = Arc::new(AtomicBool::new(true));
         
         let mut wave_format = WAVEFORMATEX {
@@ -117,7 +117,7 @@ impl NoiseMaker {
             let global_time = global_time.clone();
             let ready = ready.clone();
             move || {
-                let time_step = 1f64 / 44100f64;
+                let time_step = 1_f64 / 44100_f64;
 
                 let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
 
@@ -145,7 +145,7 @@ impl NoiseMaker {
                             let global_time = global_time.lock().unwrap();
                             *global_time
                         };
-                        let new_sample = (clip(user_function(global_time_value), 1f64) * max_sample) as i16;
+                        let new_sample = (clip(user_function(global_time_value), 1_f64) * max_sample) as i16;
 
                         block_memory[current_block + i] = new_sample;
                         let mut global_time = global_time.lock().unwrap();
