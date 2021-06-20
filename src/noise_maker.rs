@@ -69,13 +69,18 @@ fn clip(sample: f64, max: f64) -> f64 {
 }
 
 pub struct NoiseMaker {
+    block_not_zero: Arc<(Mutex<usize>, Condvar)>,
+    global_time: Arc<Mutex<f64>>,
     ready: Arc<AtomicBool>,
     thread_handle: JoinHandle<()>
 }
 
 impl NoiseMaker {
-    pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> NoiseMaker where F: Fn(f64) -> f64 + Send + 'static {
-        let ready = Arc::new(AtomicBool::new(false));
+    pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> Self where F: Fn(f64) -> f64 + Send + 'static {
+        let block_not_zero = Arc::new((Mutex::new(blocks), Condvar::new()));
+        let global_time = Arc::new(Mutex::new(0f64));
+        let ready = Arc::new(AtomicBool::new(true));
+        
         let mut wave_format = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_PCM as u16,
             nSamplesPerSec: sample_rate,
@@ -85,10 +90,7 @@ impl NoiseMaker {
             nAvgBytesPerSec: sample_rate * ((2 * 8) / 8) * channels as u32,
             cbSize: 0
         };
-
         let mut hw_device = unsafe { MaybeUninit::<HWAVEOUT>::zeroed().assume_init() };
-
-        let block_not_zero = Arc::new((Mutex::new(blocks), Condvar::new()));
 
         let mmsyserr = unsafe { waveOutOpen(&mut hw_device, device_id as u32, &mut wave_format, wave_out_proc as usize, Arc::into_raw(block_not_zero.clone()) as usize, CALLBACK_FUNCTION) };
         if mmsyserr != MMSYSERR_NOERROR {
@@ -107,10 +109,7 @@ impl NoiseMaker {
             wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
         }
 
-        ready.store(true, Ordering::SeqCst);
         let mut block_current = 0usize;
-
-        let global_time = Arc::new(Mutex::new(0f64));
         
         // spawn a thread to fill blocks with audio data, waiting for the sound
         // driver to be done with them
@@ -143,10 +142,14 @@ impl NoiseMaker {
                     let current_block = block_current * block_samples as usize;
 
                     for i in 0..block_samples as usize {
-                        let mut global_time = global_time.lock().unwrap();
-                        let new_sample = (clip(user_function(*global_time), 1f64) * max_sample) as i16;
+                        let global_time_value = {
+                            let global_time = global_time.lock().unwrap();
+                            *global_time
+                        };
+                        let new_sample = (clip(user_function(global_time_value), 1f64) * max_sample) as i16;
 
                         block_memory[current_block + i] = new_sample;
+                        let mut global_time = global_time.lock().unwrap();
                         *global_time += time_step;
                     }
 
@@ -159,13 +162,21 @@ impl NoiseMaker {
             }
         });
         
-        let _block_free = block_not_zero.0.lock().unwrap();
+        let block_free = block_not_zero.0.lock().unwrap();
         block_not_zero.1.notify_one();
+        drop(block_free);
 
-        NoiseMaker {
-            ready: ready.clone(),
+        Self {
+            block_not_zero,
+            global_time,
+            ready,
             thread_handle
         }
+    }
+
+    pub fn get_time(&self) -> f64 {
+        let global_time = self.global_time.lock().unwrap();
+        *global_time
     }
 
     pub fn stop(self) {

@@ -48,7 +48,7 @@ fn main() -> windows::Result<()> {
                 if current_key != k as i32 {
                     let mut frequency_output  = frequency_output.lock().unwrap();
                     *frequency_output = octave_base_frequency * twelveth_root_of_2.powi(k as i32);
-                    print!("\rNote On : {:.2}Hz", *frequency_output);
+                    print!("\rNote On : {:.5}s {:.2}Hz", noise_maker.get_time(), *frequency_output);
                     let _ = stdout().flush();
                     current_key = k as i32;
                 }
@@ -59,7 +59,7 @@ fn main() -> windows::Result<()> {
 
         if !key_pressed {
             if current_key != -1 {
-                print!("\rNote Off          ");
+                print!("\rNote Off : {:.5}s        ", noise_maker.get_time());
                 let _ = stdout().flush();
                 current_key = -1;
             }
