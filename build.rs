@@ -5,6 +5,7 @@ fn main() {
             WAVEOUTCAPSW,
             waveOutGetDevCapsW,
             MMSYSERR_NOERROR,
+            MAXERRORLENGTH,
             WAVEFORMATEX,
             WAVE_FORMAT_PCM,
             waveOutOpen,

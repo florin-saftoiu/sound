@@ -39,7 +39,7 @@ fn main() -> windows::Result<()> {
 
     let noise_maker = NoiseMaker::new(0, 44100, 1, 8, 256, make_noise);
 
-    let mut current_key = -1i32;
+    let mut current_key = -1_i32;
 
     loop {
         let mut key_pressed = false;

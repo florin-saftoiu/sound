@@ -14,6 +14,7 @@ use bindings::Windows::{
             WAVEOUTCAPSW,
             waveOutGetDevCapsW,
             MMSYSERR_NOERROR,
+            MAXERRORLENGTH,
             WAVEFORMATEX,
             WAVE_FORMAT_PCM,
             waveOutOpen,
@@ -83,32 +84,32 @@ impl NoiseMaker {
         let mut wave_format = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_PCM as u16,
             nSamplesPerSec: sample_rate,
-            wBitsPerSample: 2 * 8,
+            wBitsPerSample: size_of::<i16>() as u16 * 8,
             nChannels: channels,
-            nBlockAlign: ((2 * 8) / 8) * channels,
-            nAvgBytesPerSec: sample_rate * ((2 * 8) / 8) * channels as u32,
+            nBlockAlign: ((size_of::<i16>() as u16 * 8) / 8) * channels,
+            nAvgBytesPerSec: sample_rate * ((size_of::<i16>() as u32 * 8) / 8) * channels as u32,
             cbSize: 0
         };
         let mut hw_device = unsafe { MaybeUninit::<HWAVEOUT>::zeroed().assume_init() };
 
         let mmsyserr = unsafe { waveOutOpen(&mut hw_device, device_id as u32, &mut wave_format, wave_out_proc as usize, Arc::into_raw(block_not_zero.clone()) as usize, CALLBACK_FUNCTION) };
         if mmsyserr != MMSYSERR_NOERROR {
-            let mut text: [u16; 512] = [0; 512];
+            let mut text = [0_u16; MAXERRORLENGTH as usize];
             unsafe { waveOutGetErrorTextW(mmsyserr, PWSTR(text.as_mut_ptr()), text.len() as u32) };
             let end = text.iter().position(|&x| x == 0).unwrap();
             let text = String::from_utf16(&text[..end]).unwrap();
             panic!("Error calling waveOutOpen {}", text);
         }
 
-        let mut block_memory = vec![0i16; blocks * block_samples as usize];
+        let mut block_memory = vec![0_i16; blocks * block_samples as usize];
         let mut wave_headers = vec![unsafe { MaybeUninit::<WAVEHDR>::zeroed().assume_init() }; blocks];
 
         for i in 0..blocks as usize {
-            wave_headers[i].dwBufferLength = block_samples * 2;
+            wave_headers[i].dwBufferLength = block_samples * size_of::<i16>() as u32;
             wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
         }
 
-        let mut block_current = 0usize;
+        let mut block_current = 0_usize;
         
         // spawn a thread to fill blocks with audio data, waiting for the sound
         // driver to be done with them
@@ -119,7 +120,7 @@ impl NoiseMaker {
             move || {
                 let time_step = 1_f64 / 44100_f64;
 
-                let max_sample = (2u16.pow((2 * 8) - 1) - 1) as f64;
+                let max_sample = (2_u16.pow((size_of::<i16>() as u32 * 8) - 1) - 1) as f64;
 
                 while ready.load(Ordering::SeqCst) {
                     // wait for block to become available
