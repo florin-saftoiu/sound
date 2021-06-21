@@ -17,8 +17,12 @@ The following tasks need to be in your ```tasks.json``` file :
 
     {
         "type": "cargo",
-        "label": "sound",
+        "label": "sine_wave",
         "command": "build",
+        "args": [
+            "--bin",
+            "sine_wave"
+        ],
         "problemMatcher": [
             "$rustc"
         ],
@@ -31,14 +35,14 @@ The following tasks need to be in your ```tasks.json``` file :
 The following configuration needs to be in your ```launch.json``` file :
 
     {
-        "name": "sound",
+        "name": "sine_wave",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/target/debug/sound.exe",
+        "program": "${workspaceFolder}/target/debug/sine_wave.exe",
         "args": [],
         "stopAtEntry": false,
         "cwd": "${workspaceFolder}",
         "environment": [],
         "console": "newExternalWindow",
-        "preLaunchTask": "sound"
+        "preLaunchTask": "sine_wave"
     }

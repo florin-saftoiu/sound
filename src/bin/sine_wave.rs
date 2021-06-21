@@ -1,3 +1,4 @@
+#[path ="../noise_maker.rs"]
 mod noise_maker;
 mod bindings {
     windows::include_bindings!();
@@ -33,8 +34,8 @@ fn main() -> windows::Result<()> {
     let frequency_output_clone = frequency_output.clone();
     let make_noise = move |time: f64| {
         let frequency_output = frequency_output_clone.lock().unwrap();
-        let output = (*frequency_output * 2_f64 * PI * time).sin();
-        output * 0.5_f64
+        let output = 1_f64 * ((*frequency_output * 2_f64 * PI * time).sin() + ((*frequency_output + 20_f64) * 2_f64 * PI * time).sin());
+        output * 0.5_f64 // master volume
     };
 
     let noise_maker = NoiseMaker::new::<i16, _>(0, 44100, 1, 8, 256, make_noise);
