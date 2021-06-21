@@ -143,9 +143,14 @@ fn main() -> windows::Result<()> {
     let octave_base_frequency = 220_f64;
     let twelveth_root_of_2 = 2_f64.powf(1_f64 / 12_f64);
     let envelope = Arc::new(Mutex::new(EnvelopeADSR {
-        attack_time: 0.1_f64,
+        /*attack_time: 0.1_f64,
         release_time: 0.2_f64,
-        ..Default::default()
+        ..Default::default()*/ // harmonica
+        attack_time: 0.01_f64,
+        decay_time: 1_f64,
+        sustain_amplitude: 0_f64,
+        release_time: 1_f64,
+        ..Default::default() // bell
     }));
 
     let frequency_output_clone = frequency_output.clone();
@@ -154,10 +159,13 @@ fn main() -> windows::Result<()> {
         let frequency_output = frequency_output_clone.lock().unwrap();
         let envelope = envelope_clone.lock().unwrap();
         let output = envelope.get_amplitude(time) * (
-            1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64) +
+            /*1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64) +
             0.5_f64 * osc(*frequency_output * 1.5_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
             0.25_f64 * osc(*frequency_output * 2_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
-            0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64)
+            0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64)*/ // harmonica
+            1_f64 * osc(*frequency_output * 2_f64, time, OscType::SineWave, 5_f64, 0.01_f64) +
+            0.5_f64 * osc(*frequency_output * 3_f64, time, OscType::SineWave, 0_f64, 0_f64) +
+            0.25_f64 * osc(*frequency_output * 4_f64, time, OscType::SineWave, 0_f64, 0_f64) // bell
         );
         output * 0.5_f64 // master volume
     };
