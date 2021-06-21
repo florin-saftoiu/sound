@@ -4,7 +4,6 @@ mod bindings {
     windows::include_bindings!();
 }
 
-use std::borrow::{Borrow, BorrowMut};
 use std::f64::consts::PI;
 use std::io::{Write, stdout};
 use std::sync::{Arc, Mutex};
@@ -19,6 +18,7 @@ fn w(hertz: f64) -> f64 {
     hertz * 2_f64 * PI
 }
 
+#[allow(dead_code)]
 enum OscType {
     SineWave,
     SquareWave,
