@@ -154,7 +154,10 @@ fn main() -> windows::Result<()> {
         let frequency_output = frequency_output_clone.lock().unwrap();
         let envelope = envelope_clone.lock().unwrap();
         let output = envelope.get_amplitude(time) * (
-            1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64)
+            1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64) +
+            0.5_f64 * osc(*frequency_output * 1.5_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
+            0.25_f64 * osc(*frequency_output * 2_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
+            0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64)
         );
         output * 0.5_f64 // master volume
     };
