@@ -30,6 +30,22 @@ The following tasks need to be in your ```tasks.json``` file :
         "options": {
             "cwd": "${workspaceFolder}"
         }
+    },
+    {
+        "type": "cargo",
+        "label": "oscillator",
+        "command": "build",
+        "args": [
+            "--bin",
+            "oscillator"
+        ],
+        "problemMatcher": [
+            "$rustc"
+        ],
+        "group": "build",
+        "options": {
+            "cwd": "${workspaceFolder}"
+        }
     }
 
 The following configuration needs to be in your ```launch.json``` file :
@@ -45,4 +61,16 @@ The following configuration needs to be in your ```launch.json``` file :
         "environment": [],
         "console": "newExternalWindow",
         "preLaunchTask": "sine_wave"
+    },
+    {
+        "name": "oscillator",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/target/debug/oscillator.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "newExternalWindow",
+        "preLaunchTask": "oscillator"
     }
