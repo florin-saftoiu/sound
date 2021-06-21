@@ -46,6 +46,22 @@ The following tasks need to be in your ```tasks.json``` file :
         "options": {
             "cwd": "${workspaceFolder}"
         }
+    },
+    {
+        "type": "cargo",
+        "label": "polyphony",
+        "command": "build",
+        "args": [
+            "--bin",
+            "polyphony"
+        ],
+        "problemMatcher": [
+            "$rustc"
+        ],
+        "group": "build",
+        "options": {
+            "cwd": "${workspaceFolder}"
+        }
     }
 
 The following configuration needs to be in your ```launch.json``` file :
@@ -73,4 +89,16 @@ The following configuration needs to be in your ```launch.json``` file :
         "environment": [],
         "console": "newExternalWindow",
         "preLaunchTask": "oscillator"
+    },
+    {
+        "name": "polyphony",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/target/debug/polyphony.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "newExternalWindow",
+        "preLaunchTask": "polyphony"
     }
