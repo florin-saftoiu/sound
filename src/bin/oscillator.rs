@@ -141,7 +141,10 @@ fn main() -> windows::Result<()> {
     let make_noise = move |time: f64| {
         let frequency_output = frequency_output_clone.lock().unwrap();
         let envelope = envelope_clone.lock().unwrap();
-        let output = envelope.get_amplitude(time) * osc(*frequency_output, time, OscType::AnalogSawWave);
+        let output = envelope.get_amplitude(time) * (
+            osc(*frequency_output * 0.5_f64, time, OscType::AnalogSawWave) +
+            osc(*frequency_output * 1_f64, time, OscType::SquareWave)
+        );
         output * 0.5_f64 // master volume
     };
 
