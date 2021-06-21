@@ -69,6 +69,25 @@ fn clip(sample: f64, max: f64) -> f64 {
     }
 }
 
+pub trait BitDepth {
+    fn from_f64(v: f64) -> Self;
+}
+
+macro_rules! impl_from_f64 {
+    ($($ty:ty)*) => {
+        $(
+            impl BitDepth for $ty {
+                #[inline]
+                fn from_f64(f: f64) -> $ty {
+                    f as $ty
+                }
+            }
+        )*
+    };
+}
+
+impl_from_f64!(i8 i16 i32);
+
 pub struct NoiseMaker {
     global_time: Arc<Mutex<f64>>,
     ready: Arc<AtomicBool>,
@@ -76,7 +95,10 @@ pub struct NoiseMaker {
 }
 
 impl NoiseMaker {
-    pub fn new<F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> Self where F: Fn(f64) -> f64 + Send + 'static {
+    pub fn new<T, F>(device_id: usize, sample_rate: u32, channels: u16, blocks: usize, block_samples: u32, user_function: F) -> Self where
+        T: BitDepth + Default + Clone + Send + 'static,
+        F: Fn(f64) -> f64 + Send + 'static {
+
         let block_not_zero = Arc::new((Mutex::new(blocks), Condvar::new()));
         let global_time = Arc::new(Mutex::new(0_f64));
         let ready = Arc::new(AtomicBool::new(true));
@@ -84,10 +106,10 @@ impl NoiseMaker {
         let mut wave_format = WAVEFORMATEX {
             wFormatTag: WAVE_FORMAT_PCM as u16,
             nSamplesPerSec: sample_rate,
-            wBitsPerSample: size_of::<i16>() as u16 * 8,
+            wBitsPerSample: size_of::<T>() as u16 * 8,
             nChannels: channels,
-            nBlockAlign: ((size_of::<i16>() as u16 * 8) / 8) * channels,
-            nAvgBytesPerSec: sample_rate * ((size_of::<i16>() as u32 * 8) / 8) * channels as u32,
+            nBlockAlign: size_of::<T>() as u16 * channels,
+            nAvgBytesPerSec: sample_rate * size_of::<T>() as u32 * channels as u32,
             cbSize: 0
         };
         let mut hw_device = unsafe { MaybeUninit::<HWAVEOUT>::zeroed().assume_init() };
@@ -101,11 +123,11 @@ impl NoiseMaker {
             panic!("Error calling waveOutOpen {}", text);
         }
 
-        let mut block_memory = vec![0_i16; blocks * block_samples as usize];
+        let mut block_memory = vec![T::default(); blocks * block_samples as usize];
         let mut wave_headers = vec![unsafe { MaybeUninit::<WAVEHDR>::zeroed().assume_init() }; blocks];
 
         for i in 0..blocks as usize {
-            wave_headers[i].dwBufferLength = block_samples * size_of::<i16>() as u32;
+            wave_headers[i].dwBufferLength = block_samples * size_of::<T>() as u32;
             wave_headers[i].lpData = PSTR(unsafe { block_memory.as_ptr().add(i * block_samples as usize) } as *mut u8);
         }
 
@@ -120,7 +142,7 @@ impl NoiseMaker {
             move || {
                 let time_step = 1_f64 / 44100_f64;
 
-                let max_sample = (2_u16.pow((size_of::<i16>() as u32 * 8) - 1) - 1) as f64;
+                let max_sample = (2_u32.pow((size_of::<T>() as u32 * 8) - 1) - 1) as f64;
 
                 while ready.load(Ordering::SeqCst) {
                     // wait for block to become available
@@ -146,7 +168,7 @@ impl NoiseMaker {
                             let global_time = global_time.lock().unwrap();
                             *global_time
                         };
-                        let new_sample = (clip(user_function(global_time_value), 1_f64) * max_sample) as i16;
+                        let new_sample = T::from_f64(clip(user_function(global_time_value), 1_f64) * max_sample);
 
                         block_memory[current_block + i] = new_sample;
                         let mut global_time = global_time.lock().unwrap();
