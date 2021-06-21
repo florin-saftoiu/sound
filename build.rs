@@ -24,6 +24,8 @@ fn main() {
             PWSTR
         },
         Windows::Win32::UI::KeyboardAndMouseInput::GetAsyncKeyState,
-        Windows::System::VirtualKey
+        Windows::System::VirtualKey,
+        Windows::Win32::System::Console::GetConsoleWindow,
+        Windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow
     );
 }

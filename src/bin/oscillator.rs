@@ -10,7 +10,13 @@ use std::sync::{Arc, Mutex};
 use noise_maker::*;
 use rand::prelude::*;
 use bindings::Windows::{
-    Win32::UI::KeyboardAndMouseInput::GetAsyncKeyState,
+    Win32::{
+        UI::{
+            KeyboardAndMouseInput::GetAsyncKeyState,
+            WindowsAndMessaging::GetForegroundWindow
+        },
+        System::Console::GetConsoleWindow
+    },
     System::VirtualKey
 };
 
@@ -113,6 +119,10 @@ impl EnvelopeADSR {
     }
 }
 
+fn focused() -> bool {
+    unsafe { GetConsoleWindow() == GetForegroundWindow() }
+}
+
 fn main() -> windows::Result<()> {
     for (id, name) in enumerate().iter() {
         println!("Found Output Device: {} - {}", id, name);
@@ -155,7 +165,7 @@ fn main() -> windows::Result<()> {
     loop {
         let mut key_pressed = false;
         for k in 0..16 {
-            if unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16 & 0x8000 != 0 {
+            if focused() && unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16 & 0x8000 != 0 {
                 if current_key != k as i32 {
                     let mut frequency_output  = frequency_output.lock().unwrap();
                     let mut envelope = envelope.lock().unwrap();
@@ -180,7 +190,7 @@ fn main() -> windows::Result<()> {
             }
         }
 
-        if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
+        if focused() && unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
             break;
         }
     }
