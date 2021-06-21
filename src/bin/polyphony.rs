@@ -34,12 +34,14 @@ enum OscType {
     RandomNoise
 }
 
-fn osc(hertz: f64, time: f64, osc_type: OscType) -> f64 {
+fn osc(hertz: f64, time: f64, osc_type: OscType, lfo_hertz: f64, lfo_amplitude: f64) -> f64 {
+    let freq = w(hertz) * time + lfo_amplitude * hertz * (w(lfo_hertz) * time).sin();
+
     match osc_type {
-        OscType::SineWave => (w(hertz) * time + 0.01_f64 * hertz * (w(5_f64) * time).sin()).sin(),
-        OscType::SquareWave => if (w(hertz) * time).sin() > 0_f64 { 1_f64 } else { -1_f64},
-        OscType::TriangleWave => (w(hertz) * time).sin().asin() * 2_f64 / PI,
-        OscType::AnalogSawWave => (1..100).fold(0_f64, |output, n| output + ((n as f64 * w(hertz) * time).sin() / n as f64)) * 2_f64 / PI,
+        OscType::SineWave => freq.sin(),
+        OscType::SquareWave => if freq.sin() > 0_f64 { 1_f64 } else { -1_f64},
+        OscType::TriangleWave => freq.sin().asin() * 2_f64 / PI,
+        OscType::AnalogSawWave => (1..100).fold(0_f64, |output, n| output + ((n as f64 * freq).sin() / n as f64)) * 2_f64 / PI,
         OscType::DigitalSawWave => (2_f64 / PI) * (hertz * PI * (time % (1_f64 / hertz)) - (PI / 2_f64)),
         OscType::RandomNoise => 2_f64 * random::<f64>() - 1_f64
     }
@@ -152,7 +154,7 @@ fn main() -> windows::Result<()> {
         let frequency_output = frequency_output_clone.lock().unwrap();
         let envelope = envelope_clone.lock().unwrap();
         let output = envelope.get_amplitude(time) * (
-            1_f64 * osc(*frequency_output, time, OscType::SineWave)
+            1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64)
         );
         output * 0.5_f64 // master volume
     };
