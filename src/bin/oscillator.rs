@@ -19,13 +19,15 @@ fn w(hertz: f64) -> f64 {
 
 enum OscType {
     SineWave,
-    SquareWave
+    SquareWave,
+    TriangleWave
 }
 
 fn osc(hertz: f64, time: f64, osc_type: OscType) -> f64 {
     match osc_type {
         OscType::SineWave => (w(hertz) * time).sin(),
-        OscType::SquareWave => if (w(hertz) * time).sin() > 0_f64 { 1_f64 } else { -1_f64}
+        OscType::SquareWave => if (w(hertz) * time).sin() > 0_f64 { 1_f64 } else { -1_f64},
+        OscType::TriangleWave => (w(hertz) * time).sin().asin() * 2_f64 / PI
     }
 }
 
@@ -50,7 +52,7 @@ fn main() -> windows::Result<()> {
     let frequency_output_clone = frequency_output.clone();
     let make_noise = move |time: f64| {
         let frequency_output = frequency_output_clone.lock().unwrap();
-        let output = osc(*frequency_output, time, OscType::SquareWave);
+        let output = osc(*frequency_output, time, OscType::TriangleWave);
         output * 0.5_f64 // master volume
     };
 
