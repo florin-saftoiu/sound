@@ -163,14 +163,16 @@ impl NoiseMaker {
 
                     let current_block = block_current * block_samples as usize;
 
-                    for i in 0..block_samples as usize {
-                        let global_time_value = {
-                            let global_time = global_time.lock().unwrap();
-                            *global_time
-                        };
-                        let new_sample = T::from_f64(clip(user_function(global_time_value), 1_f64) * max_sample);
+                    for i in (0..block_samples as usize).step_by(channels as usize) {
+                        for j in 0..channels as usize {
+                            let global_time_value = {
+                                let global_time = global_time.lock().unwrap();
+                                *global_time
+                            };
+                            let new_sample = T::from_f64(clip(user_function(global_time_value), 1_f64) * max_sample);
 
-                        block_memory[current_block + i] = new_sample;
+                            block_memory[current_block + i + j] = new_sample;
+                        }
                         let mut global_time = global_time.lock().unwrap();
                         *global_time += time_step;
                     }
