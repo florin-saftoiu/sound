@@ -54,11 +54,6 @@ struct EnvelopeADSR {
 
     sustain_amplitude: f64,
     start_amplitude: f64,
-
-    trigger_on_time: f64,
-    trigger_off_time: f64,
-
-    note_on: bool
 }
 
 impl Default for EnvelopeADSR {
@@ -69,22 +64,19 @@ impl Default for EnvelopeADSR {
             release_time: 0.02_f64,
 
             sustain_amplitude: 0.8_f64,
-            start_amplitude: 1_f64,
-
-            trigger_on_time: 0_f64,
-            trigger_off_time: 0_f64,
-
-            note_on: false
+            start_amplitude: 1_f64
         }
     }
 }
 
 impl EnvelopeADSR {
-    fn get_amplitude(&self, time: f64) -> f64 {
+    fn amplitude(&self, time: f64, time_on: f64, time_off: f64) -> f64 {
         let mut amplitude = 0_f64;
-        let life_time = time - self.trigger_on_time;
+        let mut release_amplitude = 0_f64;
 
-        if self.note_on {
+        if time_on > time_off { // note is on
+            let life_time = time - time_on;
+
             // attack
             if life_time <= self.attack_time {
                 amplitude = life_time / self.attack_time * self.start_amplitude;
@@ -97,34 +89,42 @@ impl EnvelopeADSR {
 
             // sustain
             if life_time > self.attack_time + self.decay_time {
-                amplitude = self.sustain_amplitude
+                amplitude = self.sustain_amplitude;
             }
-        } else {
-            amplitude = (time - self.trigger_off_time) / self.release_time * -self.sustain_amplitude + self.sustain_amplitude;
+        } else { // note is off
+            let life_time = time_off - time_on;
+
+            // attack
+            if life_time <= self.attack_time {
+                release_amplitude = life_time / self.attack_time * self.start_amplitude;
+            }
+
+            // decay
+            if life_time > self.attack_time && life_time <= self.attack_time + self.decay_time {
+                release_amplitude = (life_time - self.attack_time) / self.decay_time * (self.sustain_amplitude - self.start_amplitude) + self.start_amplitude;
+            }
+
+            // sustain
+            if life_time > self.attack_time + self.decay_time {
+                release_amplitude = self.sustain_amplitude;
+            }
+
+            amplitude = (time - time_off) / self.release_time * -release_amplitude + release_amplitude;
         }
 
-        if amplitude <= 0.0001_f64 {
+        if amplitude <= 0_f64 {
             amplitude = 0_f64;
         }
 
         amplitude
-    }
-
-    fn note_on(&mut self, time_on: f64) {
-        self.trigger_on_time = time_on;
-        self.note_on = true;
-    }
-
-    fn note_off(&mut self, time_off: f64) {
-        self.trigger_off_time = time_off;
-        self.note_on = false;
     }
 }
 
 #[allow(dead_code)]
 enum InstrumentType {
     Harmonica,
-    Bell
+    Bell,
+    Bell8
 }
 
 struct Instrument {
@@ -149,9 +149,17 @@ impl Instrument {
                 instrument_type,
                 volume: 1_f64,
                 envelope: EnvelopeADSR {
-                    attack_time: 0.01_f64,
                     decay_time: 1_f64,
+                    release_time: 1_f64,
                     sustain_amplitude: 0_f64,
+                    ..Default::default()
+                }
+            },
+            InstrumentType::Bell8 => Self {
+                instrument_type,
+                volume: 1_f64,
+                envelope: EnvelopeADSR {
+                    decay_time: 0.5_f64,
                     release_time: 1_f64,
                     ..Default::default()
                 }
@@ -159,20 +167,63 @@ impl Instrument {
         }
     }
 
-    fn sound(&self, time: f64, frequency: f64) -> f64 {
-        self.envelope.get_amplitude(time) * 
-        match self.instrument_type {
-            InstrumentType::Harmonica =>
-                1_f64 * osc(frequency, time, OscType::SquareWave, 5_f64, 0.001_f64) +
-                0.5_f64 * osc(frequency * 1.5_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
-                0.25_f64 * osc(frequency * 2_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
-                0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64),
-            InstrumentType::Bell =>
-                1_f64 * osc(frequency * 2_f64, time, OscType::SineWave, 5_f64, 0.001_f64) +
-                0.5_f64 * osc(frequency * 3_f64, time, OscType::SineWave, 0_f64, 0_f64) +
-                0.25_f64 * osc(frequency * 4_f64, time, OscType::SineWave, 0_f64, 0_f64)
-        } *
-        self.volume
+    fn sound(&self, time: f64, n: Note) -> (f64, bool) {
+        let amplitude = self.envelope.amplitude(time, n.on, n.off);
+        let note_finished = amplitude <= 0_f64;
+        
+        (
+            amplitude * 
+            match self.instrument_type {
+                InstrumentType::Harmonica =>
+                    1_f64 * osc(scale(n.id, ScaleType::Default), n.on - time, OscType::SquareWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SquareWave, 0_f64, 0_f64) +
+                    0.05_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::RandomNoise, 0_f64, 0_f64),
+                InstrumentType::Bell =>
+                    1_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SineWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64) +
+                    0.25_f64 * osc(scale(n.id + 36, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64),
+                InstrumentType::Bell8 =>
+                    1_f64 * osc(scale(n.id, ScaleType::Default), n.on - time, OscType::SineWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64) +
+                    0.25_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64)
+            } *
+            self.volume,
+
+            note_finished
+        )
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Note {
+    id: i32,
+    on: f64,
+    off: f64,
+    #[allow(dead_code)]
+    active: bool,
+    #[allow(dead_code)]
+    channel: i32
+}
+
+impl Default for Note {
+    fn default() -> Self {
+        Self {
+            id: 0,
+            on: 0_f64,
+            off: 0_f64,
+            active: false,
+            channel: 0
+        }
+    }
+}
+
+enum ScaleType {
+    Default
+}
+
+fn scale(note_id: i32, scale_type: ScaleType) -> f64 {
+    match scale_type {
+        ScaleType::Default => 256_f64 * 2_f64.powf(1_f64 / 12_f64).powi(note_id)
     }
 }
 
@@ -194,18 +245,16 @@ fn main() -> windows::Result<()> {
     println!("|_____|_____|_____|_____|_____|_____|_____|_____|_____|_____|");
     println!();
 
-    let frequency_output = Arc::new(Mutex::new(0_f64));
-    let octave_base_frequency = 220_f64;
-    let twelveth_root_of_2 = 2_f64.powf(1_f64 / 12_f64);
+    let note = Arc::new(Mutex::new(Note::default()));
     let voice = Arc::new(Mutex::new(Instrument::new(InstrumentType::Harmonica)));
 
     let make_noise = {
-        let frequency_output = frequency_output.clone();
+        let note = note.clone();
         let voice = voice.clone();
         move |time: f64| {
-        let frequency_output = frequency_output.lock().unwrap();
+        let note = note.lock().unwrap();
             let voice = voice.lock().unwrap();
-            let output = voice.sound(time, *frequency_output);
+            let (output, _note_finished) = voice.sound(time, *note);
             output * 0.5_f64 // master volume
         }
     };
@@ -219,11 +268,10 @@ fn main() -> windows::Result<()> {
         for k in 0..16 {
             if focused() && unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16 & 0x8000 != 0 {
                 if current_key != k as i32 {
-                    let mut frequency_output  = frequency_output.lock().unwrap();
-                    let mut voice = voice.lock().unwrap();
-                    *frequency_output = octave_base_frequency * twelveth_root_of_2.powi(k as i32);
-                    voice.envelope.note_on(noise_maker.get_time());
-                    print!("\rNote On : {:.5}s {:.2}Hz", noise_maker.get_time(), *frequency_output);
+                    let mut note = note.lock().unwrap();
+                    note.id = k as i32;
+                    note.on = noise_maker.get_time();                    
+                    print!("\rNote On : {:.5}s {:.2}Hz", noise_maker.get_time(), scale(note.id, ScaleType::Default));
                     let _ = stdout().flush();
                     current_key = k as i32;
                 }
@@ -234,8 +282,9 @@ fn main() -> windows::Result<()> {
 
         if !key_pressed {
             if current_key != -1 {
-                let mut voice = voice.lock().unwrap();
-                voice.envelope.note_off(noise_maker.get_time());
+                let mut note = note.lock().unwrap();
+                note.id = current_key;
+                note.off = noise_maker.get_time();
                 print!("\rNote Off : {:.5}s        ", noise_maker.get_time());
                 let _ = stdout().flush();
                 current_key = -1;
