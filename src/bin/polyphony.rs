@@ -121,6 +121,61 @@ impl EnvelopeADSR {
     }
 }
 
+#[allow(dead_code)]
+enum InstrumentType {
+    Harmonica,
+    Bell
+}
+
+struct Instrument {
+    instrument_type: InstrumentType,
+    volume: f64,
+    envelope: EnvelopeADSR
+}
+
+impl Instrument {
+    fn new(instrument_type: InstrumentType) -> Self {
+        match instrument_type {
+            InstrumentType::Harmonica => Self {
+                instrument_type,
+                volume: 1_f64,
+                envelope: EnvelopeADSR {
+                    attack_time: 0.1_f64,
+                    release_time: 0.2_f64,
+                    ..Default::default()
+                }
+            },
+            InstrumentType::Bell => Self {
+                instrument_type,
+                volume: 1_f64,
+                envelope: EnvelopeADSR {
+                    attack_time: 0.01_f64,
+                    decay_time: 1_f64,
+                    sustain_amplitude: 0_f64,
+                    release_time: 1_f64,
+                    ..Default::default()
+                }
+            }
+        }
+    }
+
+    fn sound(&self, time: f64, frequency: f64) -> f64 {
+        self.envelope.get_amplitude(time) * 
+        match self.instrument_type {
+            InstrumentType::Harmonica =>
+                1_f64 * osc(frequency, time, OscType::SquareWave, 5_f64, 0.001_f64) +
+                0.5_f64 * osc(frequency * 1.5_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
+                0.25_f64 * osc(frequency * 2_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
+                0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64),
+            InstrumentType::Bell =>
+                1_f64 * osc(frequency * 2_f64, time, OscType::SineWave, 5_f64, 0.001_f64) +
+                0.5_f64 * osc(frequency * 3_f64, time, OscType::SineWave, 0_f64, 0_f64) +
+                0.25_f64 * osc(frequency * 4_f64, time, OscType::SineWave, 0_f64, 0_f64)
+        } *
+        self.volume
+    }
+}
+
 fn focused() -> bool {
     unsafe { GetConsoleWindow() == GetForegroundWindow() }
 }
@@ -142,32 +197,17 @@ fn main() -> windows::Result<()> {
     let frequency_output = Arc::new(Mutex::new(0_f64));
     let octave_base_frequency = 220_f64;
     let twelveth_root_of_2 = 2_f64.powf(1_f64 / 12_f64);
-    let envelope = Arc::new(Mutex::new(EnvelopeADSR {
-        /*attack_time: 0.1_f64,
-        release_time: 0.2_f64,
-        ..Default::default()*/ // harmonica
-        attack_time: 0.01_f64,
-        decay_time: 1_f64,
-        sustain_amplitude: 0_f64,
-        release_time: 1_f64,
-        ..Default::default() // bell
-    }));
+    let voice = Arc::new(Mutex::new(Instrument::new(InstrumentType::Harmonica)));
 
-    let frequency_output_clone = frequency_output.clone();
-    let envelope_clone = envelope.clone();
-    let make_noise = move |time: f64| {
-        let frequency_output = frequency_output_clone.lock().unwrap();
-        let envelope = envelope_clone.lock().unwrap();
-        let output = envelope.get_amplitude(time) * (
-            /*1_f64 * osc(*frequency_output, time, OscType::SquareWave, 5_f64, 0.01_f64) +
-            0.5_f64 * osc(*frequency_output * 1.5_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
-            0.25_f64 * osc(*frequency_output * 2_f64, time, OscType::SquareWave, 0_f64, 0_f64) +
-            0.05_f64 * osc(0_f64, time, OscType::RandomNoise, 0_f64, 0_f64)*/ // harmonica
-            1_f64 * osc(*frequency_output * 2_f64, time, OscType::SineWave, 5_f64, 0.01_f64) +
-            0.5_f64 * osc(*frequency_output * 3_f64, time, OscType::SineWave, 0_f64, 0_f64) +
-            0.25_f64 * osc(*frequency_output * 4_f64, time, OscType::SineWave, 0_f64, 0_f64) // bell
-        );
-        output * 0.5_f64 // master volume
+    let make_noise = {
+        let frequency_output = frequency_output.clone();
+        let voice = voice.clone();
+        move |time: f64| {
+        let frequency_output = frequency_output.lock().unwrap();
+            let voice = voice.lock().unwrap();
+            let output = voice.sound(time, *frequency_output);
+            output * 0.5_f64 // master volume
+        }
     };
 
     let noise_maker = NoiseMaker::new::<i16, _>(0, 44100, 1, 8, 256, make_noise);
@@ -180,9 +220,9 @@ fn main() -> windows::Result<()> {
             if focused() && unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16 & 0x8000 != 0 {
                 if current_key != k as i32 {
                     let mut frequency_output  = frequency_output.lock().unwrap();
-                    let mut envelope = envelope.lock().unwrap();
+                    let mut voice = voice.lock().unwrap();
                     *frequency_output = octave_base_frequency * twelveth_root_of_2.powi(k as i32);
-                    envelope.note_on(noise_maker.get_time());
+                    voice.envelope.note_on(noise_maker.get_time());
                     print!("\rNote On : {:.5}s {:.2}Hz", noise_maker.get_time(), *frequency_output);
                     let _ = stdout().flush();
                     current_key = k as i32;
@@ -194,8 +234,8 @@ fn main() -> windows::Result<()> {
 
         if !key_pressed {
             if current_key != -1 {
-                let mut envelope = envelope.lock().unwrap();
-                envelope.note_off(noise_maker.get_time());
+                let mut voice = voice.lock().unwrap();
+                voice.envelope.note_off(noise_maker.get_time());
                 print!("\rNote Off : {:.5}s        ", noise_maker.get_time());
                 let _ = stdout().flush();
                 current_key = -1;
