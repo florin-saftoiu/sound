@@ -199,7 +199,6 @@ struct Note {
     id: i32,
     on: f64,
     off: f64,
-    #[allow(dead_code)]
     active: bool,
     #[allow(dead_code)]
     channel: i32
@@ -245,53 +244,68 @@ fn main() -> windows::Result<()> {
     println!("|_____|_____|_____|_____|_____|_____|_____|_____|_____|_____|");
     println!();
 
-    let note = Arc::new(Mutex::new(Note::default()));
+    let notes = Arc::new(Mutex::new(Vec::<Note>::new()));
     let voice = Arc::new(Mutex::new(Instrument::new(InstrumentType::Harmonica)));
 
     let make_noise = {
-        let note = note.clone();
+        let notes = notes.clone();
         let voice = voice.clone();
         move |time: f64| {
-        let note = note.lock().unwrap();
+            let mut notes = notes.lock().unwrap();
             let voice = voice.lock().unwrap();
-            let (output, _note_finished) = voice.sound(time, *note);
-            output * 0.5_f64 // master volume
+
+            let mixed_output = notes.iter_mut().fold(0_f64, |mixed_output, note| {
+                let (output, note_finished) = voice.sound(time, *note);
+                if note_finished && note.off > note.on {
+                    note.active = false;
+                }
+                mixed_output + output
+            });
+
+            notes.retain(|&note| note.active);
+
+            mixed_output * 0.2_f64 // master volume
         }
     };
 
     let noise_maker = NoiseMaker::new::<i16, _>(0, 44100, 1, 8, 256, make_noise);
 
-    let mut current_key = -1_i32;
-
     loop {
-        let mut key_pressed = false;
+        if !focused() {
+            continue;
+        }
+
         for k in 0..16 {
-            if focused() && unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16 & 0x8000 != 0 {
-                if current_key != k as i32 {
-                    let mut note = note.lock().unwrap();
-                    note.id = k as i32;
-                    note.on = noise_maker.get_time();                    
-                    print!("\rNote On : {:.5}s {:.2}Hz", noise_maker.get_time(), scale(note.id, ScaleType::Default));
-                    let _ = stdout().flush();
-                    current_key = k as i32;
+            let key_state = unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16;
+            let now = noise_maker.get_time();
+            let mut notes = notes.lock().unwrap();
+            if let Some(note_found) = notes.iter_mut().find(|note| note.id == k as i32) {
+                if key_state & 0x8000 != 0 { // key still held
+                    if note_found.off > note_found.on { // key pressed again during release phase
+                        note_found.on = now;
+                        note_found.active = true;
+                    }
+                } else { // key released => switch it off
+                    if note_found.off < note_found.on {
+                        note_found.off = now
+                    }
                 }
-
-                key_pressed = true;
+            } else {
+                if key_state & 0x8000 != 0 { // key pressed => create new note
+                    let note = Note {
+                        id: k as i32,
+                        on: now,
+                        active: true,
+                        ..Default::default()
+                    };
+                    notes.push(note);
+                }
             }
         }
+        print!("\rNotes: {}", notes.lock().unwrap().len());
+        let _ = stdout().flush();
 
-        if !key_pressed {
-            if current_key != -1 {
-                let mut note = note.lock().unwrap();
-                note.id = current_key;
-                note.off = noise_maker.get_time();
-                print!("\rNote Off : {:.5}s        ", noise_maker.get_time());
-                let _ = stdout().flush();
-                current_key = -1;
-            }
-        }
-
-        if focused() && unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
+        if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
             break;
         }
     }
