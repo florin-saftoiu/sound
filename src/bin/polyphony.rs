@@ -245,14 +245,12 @@ fn main() -> windows::Result<()> {
     println!();
 
     let notes = Arc::new(Mutex::new(Vec::<Note>::new()));
-    let voice = Arc::new(Mutex::new(Instrument::new(InstrumentType::Harmonica)));
+    let voice = Instrument::new(InstrumentType::Harmonica);
 
     let make_noise = {
         let notes = notes.clone();
-        let voice = voice.clone();
         move |time: f64| {
             let mut notes = notes.lock().unwrap();
-            let voice = voice.lock().unwrap();
 
             let mixed_output = notes.iter_mut().fold(0_f64, |mixed_output, note| {
                 let (output, note_finished) = voice.sound(time, *note);
