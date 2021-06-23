@@ -199,9 +199,7 @@ struct Note {
     id: i32,
     on: f64,
     off: f64,
-    active: bool,
-    #[allow(dead_code)]
-    channel: i32
+    active: bool
 }
 
 impl Default for Note {
@@ -210,8 +208,7 @@ impl Default for Note {
             id: 0,
             on: 0_f64,
             off: 0_f64,
-            active: false,
-            channel: 0
+            active: false
         }
     }
 }
