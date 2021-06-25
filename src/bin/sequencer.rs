@@ -60,11 +60,11 @@ struct EnvelopeADSR {
 impl Default for EnvelopeADSR {
     fn default() -> Self {
         Self {
-            attack_time: 0.01_f64,
-            decay_time: 0.01_f64,
-            release_time: 0.02_f64,
+            attack_time: 0.1_f64,
+            decay_time: 0.1_f64,
+            release_time: 0.2_f64,
 
-            sustain_amplitude: 0.8_f64,
+            sustain_amplitude: 1_f64,
             start_amplitude: 1_f64
         }
     }
@@ -113,7 +113,7 @@ impl EnvelopeADSR {
             amplitude = (time - time_off) / self.release_time * -release_amplitude + release_amplitude;
         }
 
-        if amplitude <= 0_f64 {
+        if amplitude <= 0.01_f64 {
             amplitude = 0_f64;
         }
 
@@ -125,7 +125,10 @@ impl EnvelopeADSR {
 enum InstrumentType {
     Harmonica,
     Bell,
-    Bell8
+    Bell8,
+    DrumKick,
+    DrumSnare,
+    DrumHiHat
 }
 
 struct Instrument {
@@ -139,10 +142,12 @@ impl Instrument {
         match instrument_type {
             InstrumentType::Harmonica => Self {
                 instrument_type,
-                volume: 1_f64,
+                volume: 0.3_f64,
                 envelope: EnvelopeADSR {
-                    attack_time: 0.1_f64,
-                    release_time: 0.2_f64,
+                    attack_time: 0_f64,
+                    decay_time: 1_f64,
+                    release_time: 0.1_f64,
+                    sustain_amplitude: 0.95_f64,
                     ..Default::default()
                 }
             },
@@ -150,6 +155,7 @@ impl Instrument {
                 instrument_type,
                 volume: 1_f64,
                 envelope: EnvelopeADSR {
+                    attack_time: 0.01_f64,
                     decay_time: 1_f64,
                     release_time: 1_f64,
                     sustain_amplitude: 0_f64,
@@ -160,8 +166,43 @@ impl Instrument {
                 instrument_type,
                 volume: 1_f64,
                 envelope: EnvelopeADSR {
+                    attack_time: 0.01_f64,
                     decay_time: 0.5_f64,
                     release_time: 1_f64,
+                    sustain_amplitude: 0.8_f64,
+                    ..Default::default()
+                }
+            },
+            InstrumentType::DrumKick => Self {
+                instrument_type,
+                volume: 1_f64,
+                envelope: EnvelopeADSR {
+                    attack_time: 0.01_f64,
+                    decay_time: 0.15_f64,
+                    release_time: 0_f64,
+                    sustain_amplitude: 0_f64,
+                    ..Default::default()
+                }
+            },
+            InstrumentType::DrumSnare => Self {
+                instrument_type,
+                volume: 1_f64,
+                envelope: EnvelopeADSR {
+                    attack_time: 0_f64,
+                    decay_time: 0.2_f64,
+                    release_time: 0_f64,
+                    sustain_amplitude: 0_f64,
+                    ..Default::default()
+                }
+            },
+            InstrumentType::DrumHiHat => Self {
+                instrument_type,
+                volume: 0.5_f64,
+                envelope: EnvelopeADSR {
+                    attack_time: 0.01_f64,
+                    decay_time: 0.05_f64,
+                    release_time: 0_f64,
+                    sustain_amplitude: 0_f64,
                     ..Default::default()
                 }
             }
@@ -170,23 +211,37 @@ impl Instrument {
 
     fn sound(&self, time: f64, n: Note) -> (f64, bool) {
         let amplitude = self.envelope.amplitude(time, n.on, n.off);
-        let note_finished = amplitude <= 0_f64;
+        let note_finished = match self.instrument_type {
+            InstrumentType::Harmonica | InstrumentType::Bell | InstrumentType::Bell8 => amplitude <= 0_f64,
+            InstrumentType::DrumKick => time - n.on >= 1.5_f64,
+            InstrumentType::DrumSnare | InstrumentType::DrumHiHat => time - n.on >= 1_f64
+        };
         
         (
             amplitude * 
             match self.instrument_type {
                 InstrumentType::Harmonica =>
-                    1_f64 * osc(scale(n.id, ScaleType::Default), n.on - time, OscType::SquareWave, 5_f64, 0.001_f64) +
-                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SquareWave, 0_f64, 0_f64) +
-                    0.05_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::RandomNoise, 0_f64, 0_f64),
+                    1_f64 * osc(scale(n.id - 12, ScaleType::Default), n.on - time, OscType::AnalogSawWave, 5_f64, 0.001_f64) +
+                    1_f64 * osc(scale(n.id, ScaleType::Default), time - n.on, OscType::SquareWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), time - n.on, OscType::SquareWave, 0_f64, 0_f64) +
+                    0.05_f64 * osc(scale(n.id + 24, ScaleType::Default), time - n.on, OscType::RandomNoise, 0_f64, 0_f64),
                 InstrumentType::Bell =>
-                    1_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SineWave, 5_f64, 0.001_f64) +
-                    0.5_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64) +
-                    0.25_f64 * osc(scale(n.id + 36, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64),
+                    1_f64 * osc(scale(n.id + 12, ScaleType::Default), time - n.on, OscType::SineWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 24, ScaleType::Default), time - n.on, OscType::SineWave, 0_f64, 0_f64) +
+                    0.25_f64 * osc(scale(n.id + 36, ScaleType::Default), time - n.on, OscType::SineWave, 0_f64, 0_f64),
                 InstrumentType::Bell8 =>
-                    1_f64 * osc(scale(n.id, ScaleType::Default), n.on - time, OscType::SineWave, 5_f64, 0.001_f64) +
-                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64) +
-                    0.25_f64 * osc(scale(n.id + 24, ScaleType::Default), n.on - time, OscType::SineWave, 0_f64, 0_f64)
+                    1_f64 * osc(scale(n.id, ScaleType::Default), time - n.on, OscType::SquareWave, 5_f64, 0.001_f64) +
+                    0.5_f64 * osc(scale(n.id + 12, ScaleType::Default), time - n.on, OscType::SineWave, 0_f64, 0_f64) +
+                    0.25_f64 * osc(scale(n.id + 24, ScaleType::Default), time - n.on, OscType::SineWave, 0_f64, 0_f64),
+                InstrumentType::DrumKick =>
+                    0.99_f64 * osc(scale(28, ScaleType::Default), time - n.on, OscType::SineWave, 1_f64, 1_f64) +
+                    0.01_f64 * osc(0_f64, time - n.on, OscType::RandomNoise, 0_f64, 0_f64),
+                InstrumentType::DrumSnare =>
+                    0.5_f64 * osc(scale(n.id - 24, ScaleType::Default), time - n.on, OscType::SineWave, 0.5_f64, 1_f64) +
+                    0.5_f64 * osc(0_f64, time - n.on, OscType::RandomNoise, 0_f64, 0_f64),
+                InstrumentType::DrumHiHat =>
+                    0.1_f64 * osc(scale(n.id - 12, ScaleType::Default), time - n.on, OscType::SquareWave, 1.5_f64, 1_f64) +
+                    0.9_f64 * osc(0_f64, time - n.on, OscType::RandomNoise, 0_f64, 0_f64)
             } *
             self.volume,
 
@@ -220,7 +275,7 @@ enum ScaleType {
 
 fn scale(note_id: i32, scale_type: ScaleType) -> f64 {
     match scale_type {
-        ScaleType::Default => 256_f64 * 2_f64.powf(1_f64 / 12_f64).powi(note_id)
+        ScaleType::Default => 8_f64 * 2_f64.powf(1_f64 / 12_f64).powi(note_id)
     }
 }
 
@@ -281,7 +336,7 @@ fn main() -> windows::Result<()> {
             for k in 0..16 {
                 let key_state = unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16;
                 let mut notes = notes.lock().unwrap();
-                if let Some((note_found, _)) = notes.iter_mut().find(|(note, _)| note.id == k as i32) {
+                if let Some((note_found, _)) = notes.iter_mut().find(|(note, _)| note.id == k as i32 + 64) {
                     if key_state & 0x8000 != 0 { // key still held
                         if note_found.off > note_found.on { // key pressed again during release phase
                             note_found.on = now;
@@ -295,7 +350,7 @@ fn main() -> windows::Result<()> {
                 } else {
                     if key_state & 0x8000 != 0 { // key pressed => create new note
                         let note = Note {
-                            id: k as i32,
+                            id: k as i32 + 64,
                             on: now,
                             active: true,
                             ..Default::default()
