@@ -7,6 +7,7 @@ mod bindings {
 use std::f64::consts::PI;
 use std::io::{Write, stdout};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use noise_maker::*;
 use rand::prelude::*;
 use bindings::Windows::{
@@ -265,43 +266,50 @@ fn main() -> windows::Result<()> {
 
     let noise_maker = NoiseMaker::new::<i16, _>(0, 44100, 1, 8, 256, make_noise);
 
-    loop {
-        if !focused() {
-            continue;
-        }
+    let mut tp1 = Instant::now();
+    let mut tp2;
+    let mut _wall_time = 0_f64;
 
-        for k in 0..16 {
-            let key_state = unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16;
-            let now = noise_maker.get_time();
-            let mut notes = notes.lock().unwrap();
-            if let Some((note_found, _)) = notes.iter_mut().find(|(note, _)| note.id == k as i32) {
-                if key_state & 0x8000 != 0 { // key still held
-                    if note_found.off > note_found.on { // key pressed again during release phase
-                        note_found.on = now;
-                        note_found.active = true;
+    loop {
+        tp2 = Instant::now();
+        let elapsed_time = tp2.duration_since(tp1).as_secs_f64();
+        tp1 = tp2;
+        _wall_time += elapsed_time;
+        let now = noise_maker.get_time();
+
+        if focused() {
+            for k in 0..16 {
+                let key_state = unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16;
+                let mut notes = notes.lock().unwrap();
+                if let Some((note_found, _)) = notes.iter_mut().find(|(note, _)| note.id == k as i32) {
+                    if key_state & 0x8000 != 0 { // key still held
+                        if note_found.off > note_found.on { // key pressed again during release phase
+                            note_found.on = now;
+                            note_found.active = true;
+                        }
+                    } else { // key released => switch it off
+                        if note_found.off < note_found.on {
+                            note_found.off = now
+                        }
                     }
-                } else { // key released => switch it off
-                    if note_found.off < note_found.on {
-                        note_found.off = now
+                } else {
+                    if key_state & 0x8000 != 0 { // key pressed => create new note
+                        let note = Note {
+                            id: k as i32,
+                            on: now,
+                            active: true,
+                            ..Default::default()
+                        };
+                        notes.push((note, harmonica.clone()));
                     }
-                }
-            } else {
-                if key_state & 0x8000 != 0 { // key pressed => create new note
-                    let note = Note {
-                        id: k as i32,
-                        on: now,
-                        active: true,
-                        ..Default::default()
-                    };
-                    notes.push((note, harmonica.clone()));
                 }
             }
-        }
-        print!("\rNotes: {}", notes.lock().unwrap().len());
-        let _ = stdout().flush();
+            print!("\rNotes: {}", notes.lock().unwrap().len());
+            let _ = stdout().flush();
 
-        if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
-            break;
+            if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
+                break;
+            }
         }
     }
 
