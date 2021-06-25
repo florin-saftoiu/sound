@@ -62,6 +62,22 @@ The following tasks need to be in your ```tasks.json``` file :
         "options": {
             "cwd": "${workspaceFolder}"
         }
+    },
+    {
+        "type": "cargo",
+        "label": "sequencer",
+        "command": "build",
+        "args": [
+            "--bin",
+            "sequencer"
+        ],
+        "problemMatcher": [
+            "$rustc"
+        ],
+        "group": "build",
+        "options": {
+            "cwd": "${workspaceFolder}"
+        }
     }
 
 The following configuration needs to be in your ```launch.json``` file :
@@ -101,4 +117,16 @@ The following configuration needs to be in your ```launch.json``` file :
         "environment": [],
         "console": "newExternalWindow",
         "preLaunchTask": "polyphony"
+    },
+    {
+        "name": "sequencer",
+        "type": "cppvsdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/target/debug/sequencer.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${workspaceFolder}",
+        "environment": [],
+        "console": "newExternalWindow",
+        "preLaunchTask": "sequencer"
     }
