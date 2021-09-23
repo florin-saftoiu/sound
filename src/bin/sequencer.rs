@@ -122,6 +122,7 @@ impl EnvelopeADSR {
 }
 
 #[allow(dead_code)]
+#[derive(PartialEq)]
 enum InstrumentType {
     Harmonica,
     Bell,
@@ -307,7 +308,7 @@ fn main() -> windows::Result<()> {
 
             let mixed_output = notes.iter_mut().fold(0_f64, |mixed_output, (note, voice)| {
                 let (output, note_finished) = voice.sound(time, *note);
-                if note_finished && note.off > note.on {
+                if note_finished {
                     note.active = false;
                 }
                 mixed_output + output
@@ -321,6 +322,20 @@ fn main() -> windows::Result<()> {
 
     let noise_maker = NoiseMaker::new::<i16, _>(0, 44100, 1, 8, 256, make_noise);
 
+    let drum_beats = vec![
+        ("X...X...X..X.X..", Arc::new(Instrument::new(InstrumentType::DrumKick))),
+        ("..X...X...X...X.", Arc::new(Instrument::new(InstrumentType::DrumSnare))),
+        ("X.X.X.X.X.X.X.XX", Arc::new(Instrument::new(InstrumentType::DrumHiHat))),
+    ];
+
+    let beats = 4;
+    let sub_beats = 4;
+    let tempo = 90_f64;
+    let beat_time = 60_f64 / tempo / sub_beats as f64;
+    let mut current_beat = 0;
+    let total_beats = beats * sub_beats;
+    let mut accumulate = 0_f64;
+
     let mut tp1 = Instant::now();
     let mut tp2;
     let mut _wall_time = 0_f64;
@@ -332,11 +347,36 @@ fn main() -> windows::Result<()> {
         _wall_time += elapsed_time;
         let now = noise_maker.get_time();
 
+        accumulate += elapsed_time;
+        while accumulate >= beat_time {
+            accumulate -= beat_time;
+            current_beat += 1;
+
+            if current_beat >= total_beats {
+                current_beat = 0;
+            }
+
+            drum_beats.iter().for_each(|(beat, voice)| {
+                let mut notes = notes.lock().unwrap();
+                println!("b {:?}", beat.chars().nth(current_beat));
+                if beat.chars().nth(current_beat) == Some('X') {
+                    println!("n {:?}", now);
+                    let note = Note {
+                        id: 64,
+                        on: now,
+                        active: true,
+                        ..Default::default()
+                    };
+                    notes.push((note, voice.clone()));
+                }
+            });
+        }
+
         if focused() {
             for k in 0..16 {
                 let key_state = unsafe { GetAsyncKeyState(b"ZSXCFVGBNJMK\xbcL\xbe\xbf"[k] as i32) } as u16;
                 let mut notes = notes.lock().unwrap();
-                if let Some((note_found, _)) = notes.iter_mut().find(|(note, _)| note.id == k as i32 + 64) {
+                if let Some((note_found, _)) = notes.iter_mut().find(|(note, voice)| note.id == k as i32 + 64 && Arc::ptr_eq(voice, &harmonica)) {
                     if key_state & 0x8000 != 0 { // key still held
                         if note_found.off > note_found.on { // key pressed again during release phase
                             note_found.on = now;
