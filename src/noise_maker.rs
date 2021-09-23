@@ -55,7 +55,8 @@ pub fn enumerate() -> Vec<(usize, String)> {
     let mut woc = unsafe { MaybeUninit::<WAVEOUTCAPSW>::zeroed().assume_init() };
     for i in 0..device_count as usize {
         if unsafe { waveOutGetDevCapsW(i, &mut woc, size_of::<WAVEOUTCAPSW>() as u32) } == MMSYSERR_NOERROR {
-            devices.push((i, String::from_utf16(unsafe { &woc.szPname }).unwrap()));
+            let device_name_ptr = std::ptr::addr_of!(woc.szPname);
+            devices.push((i, String::from_utf16(unsafe { &device_name_ptr.read_unaligned() }).unwrap()));
         }
     }
     devices
