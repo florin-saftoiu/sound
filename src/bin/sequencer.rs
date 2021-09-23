@@ -338,13 +338,13 @@ fn main() -> windows::Result<()> {
 
     let mut tp1 = Instant::now();
     let mut tp2;
-    let mut _wall_time = 0_f64;
+    let mut wall_time = 0_f64;
 
     loop {
         tp2 = Instant::now();
         let elapsed_time = tp2.duration_since(tp1).as_secs_f64();
         tp1 = tp2;
-        _wall_time += elapsed_time;
+        wall_time += elapsed_time;
         let now = noise_maker.get_time();
 
         accumulate += elapsed_time;
@@ -358,9 +358,7 @@ fn main() -> windows::Result<()> {
 
             drum_beats.iter().for_each(|(beat, voice)| {
                 let mut notes = notes.lock().unwrap();
-                println!("b {:?}", beat.chars().nth(current_beat));
                 if beat.chars().nth(current_beat) == Some('X') {
-                    println!("n {:?}", now);
                     let note = Note {
                         id: 64,
                         on: now,
@@ -399,7 +397,7 @@ fn main() -> windows::Result<()> {
                     }
                 }
             }
-            print!("\rNotes: {}", notes.lock().unwrap().len());
+            print!("\rNotes: {} Wall Time: {:.5} CPU Time: {:.5} Latency: {:.5}", notes.lock().unwrap().len(), wall_time, now, wall_time - now);
             let _ = stdout().flush();
 
             if unsafe { GetAsyncKeyState(VirtualKey::Escape.0) } as u16 & 0x8000 != 0 {
